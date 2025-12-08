@@ -20,12 +20,39 @@ pub fn main() -> Nil {
   let num_cols = first_row |> string.trim() |> string.length()
 
 
-  let coordinates = grid
-                    |> dict.to_list()
-                    |> list.map(fn(x) { x.0 })
 
   echo #(num_rows, num_cols)
 
+  loop(grid, num_rows, num_cols, 0)
+  |> echo
+
+  Nil
+}
+
+fn loop(grid, num_rows, num_cols, total: Int) -> Int {
+  let removable_rolls = identify_removable_rolls(grid, num_rows, num_cols)
+  let removable_rolls_count = removable_rolls |> list.length() |> echo
+  case removable_rolls_count {
+    0 -> total
+    num -> {
+      let updated_grid = grid |> remove_rolls(removable_rolls)
+      loop(updated_grid, num_rows, num_cols, total + num)
+    }
+  }
+}
+
+fn remove_rolls(grid, cells) -> Dict(Coordinate, Cell) {
+  cells |> list.fold(from: grid, with: fn(grid_acc, c) {
+    grid_acc |> dict.insert(c, Empty)
+  })
+}
+
+
+
+fn identify_removable_rolls(grid: Dict(Coordinate, Cell), num_rows: Int, num_cols: Int) -> List(Coordinate){
+  let coordinates = grid
+                    |> dict.to_list()
+                    |> list.map(fn(x) { x.0 })
   coordinates
   |> list.filter(fn(c) {
     // is a roll
@@ -47,13 +74,6 @@ pub fn main() -> Nil {
                                   })
     set.size(adjacent_rolls_of_paper) < 4
   })
-  |> echo
-  |> list.length()
-  |> echo
-
-  
-
-  Nil
 }
 
 fn get_filename() -> String {
