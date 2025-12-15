@@ -1,7 +1,6 @@
 import argv
 import gleam/dict.{type Dict}
 import gleam/list
-import gleam/set
 import gleam/string
 import simplifile
 
@@ -31,6 +30,7 @@ pub fn main() {
   //|> echo
 
   grids
+  |> list.unique()
   |> list.length()
   |> echo
 }
@@ -49,19 +49,13 @@ pub fn run_simulation(
   case tick_count > num_rows {
     True -> grids
     False -> {
-      let ticked_grids =
+      let updated_grids =
         grids
         |> list.map({ tick(_, num_cols, tick_count) })
         |> list.flatten()
-        |> set.from_list()
+        //|> list.unique()
 
-      // this is super lazy but we will end up with grids that
-      // didn't have a meaningful update during tick.
-      // just remove them with set.difference
-      let updated_grids =
-        ticked_grids
-        |> set.difference(set.from_list(grids))
-        |> set.to_list()
+      echo tick_count as "tick_count"
 
       run_simulation(updated_grids, num_rows, num_cols, tick_count + 1)
     }
