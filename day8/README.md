@@ -1,4 +1,8 @@
+gleam run data/sample 10
+gleam run data/input 1000
+
 # day8
+
 
 [![Package Version](https://img.shields.io/hexpm/v/day8)](https://hex.pm/packages/day8)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/day8/)
