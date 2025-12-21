@@ -1,8 +1,12 @@
 import argv
+import gleam/bool
+import gleam/dict
 import gleam/function
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/option.{Some, None}
+import gleam/pair
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
@@ -20,31 +24,31 @@ pub fn main() {
   // for all candidate_rectangle_corners, determine if all points in candidate rectangle are in polygon
   // get the max rectangle that qualifies
   let edges = polygon_edges(points)
+  // buffer top left and bottom right corners by 1 so that we know these points always start outside the polygon
   let top_left_corner =
     Point(
-      points |> list.map(fn(p) { p.col }) |> list.fold(100_000, int.min),
-      points |> list.map(fn(p) { p.row }) |> list.fold(100_000, int.min),
+      { points |> list.map(fn(p) { p.col }) |> list.fold(100_000, int.min) } - 1,
+      { points |> list.map(fn(p) { p.row }) |> list.fold(100_000, int.min) } - 1,
     )
   let bottom_right_corner =
     Point(
-      points |> list.map(fn(p) { p.col }) |> list.fold(0, int.max),
-      points |> list.map(fn(p) { p.row }) |> list.fold(0, int.max),
+      { points |> list.map(fn(p) { p.col }) |> list.fold(0, int.max) } + 1,
+      { points |> list.map(fn(p) { p.row }) |> list.fold(0, int.max) } + 1,
     )
+
+  //print_grid(top_left_corner, bottom_right_corner, set.from_list(points))
 
   let #(horizontal_edges, vertical_edges) =
     edges
     |> list.partition(fn(e) { edge_orientation(e) == Horizontal })
 
   let points_in_polygon =
-    rectangle_map(top_left_corner, bottom_right_corner, fn(point: Point) {
-      case is_in_polygon(point, horizontal_edges, vertical_edges) {
-        True -> Ok(point)
-        False -> Error("not in polygon")
-      }
-    })
-    |> list.filter_map(function.identity)
-    |> set.from_list()
-    |> echo
+    identify_points_in_polygon(
+      top_left_corner,
+      bottom_right_corner,
+      horizontal_edges,
+      vertical_edges,
+    )
 
   print_grid(top_left_corner, bottom_right_corner, points_in_polygon)
 
@@ -70,6 +74,85 @@ fn largest_rectangle_area(corners: List(#(Point, Point))) {
   |> list.map(fn(pair) { rectangle_area(pair.0, pair.1) })
   |> list.sort(int.compare)
   |> list.last()
+}
+
+pub fn identify_points_in_polygon(
+  p1: Point,
+  p2: Point,
+  horizontal_edges: List(Edge),
+  vertical_edges: List(Edge),
+) -> Set(Point) {
+  // horizontal edges by row
+  // vertical edges by column
+
+  let horizontal_edges_by_row =
+    list.fold(horizontal_edges, dict.new(), fn(acc, edge) {
+      acc
+      |> dict.upsert({ edge.0 }.row, fn(val) {
+        case val {
+          None -> [edge]
+          Some(edges) -> [edge, ..edges]
+        }
+      })
+    })
+
+  let vertical_edges_by_col =
+    list.fold(vertical_edges, dict.new(), fn(acc, edge) {
+      acc
+      |> dict.upsert({ edge.0 }.col, fn(val) {
+        case val {
+          None -> [edge]
+          Some(edges) -> [edge, ..edges]
+        }
+      })
+    })
+
+  list.range(p1.row, p2.row)
+  |> list.fold([], fn(all_points, row) {
+    // we start with a point guaranteed to be outside the polygon
+    // if currently not in polygon and we cross a vertical edge, then we are in polygon
+    // we are in polygon until we cross the next vertical edge
+    // Because horizontal edges are a special case, we will cast the ray at 0.5 
+    // above the current point and account for horizontal edges separately
+    case row % 1000 == 0 {
+      True -> echo row as "scanning row"
+      _ -> 1
+    }
+
+    list.range(p1.col + 1, p2.col)
+    |> list.fold(#(all_points, False), fn(acc, col) {
+      let point = Point(col:, row:)
+      let current_point_on_horizontal_edge =
+        horizontal_edges_by_row |> dict.get(row) |> result.unwrap([]) |> list.any({ is_point_on_edge(point, _) })
+
+      let in_polygon = acc.1
+      let intersect_vertical =
+        vertical_edges_by_col
+        |> dict.get(col)
+        |> result.unwrap([])
+        |> list.any({
+          is_offset_point_on_edge(
+            OffsetPoint(col:, row: { int.to_float(row) -. 0.5 }),
+            _,
+          )
+        })
+
+      let add_current_point_to_polygon =
+        in_polygon
+        || current_point_on_horizontal_edge
+        || { !in_polygon && intersect_vertical }
+      let next_points = case add_current_point_to_polygon {
+        True -> [point, ..acc.0]
+        False -> acc.0
+      }
+
+      let next_in_polygon = bool.exclusive_or(in_polygon, intersect_vertical)
+
+      #(next_points, next_in_polygon)
+    })
+    |> pair.first()
+  })
+  |> set.from_list()
 }
 
 // given a top left and bottom right corner of a rectangle, map a function over every point
@@ -99,8 +182,26 @@ pub fn intersects_vertical_edges_odd_times(
   p: Point,
   vertical_edges: List(Edge),
 ) -> Bool {
-  vertical_edges
-  |> list.count({ is_intersecting_horizontal_ray(p, _) })
+  let potential_intersections =
+    vertical_edges
+    |> list.filter({ is_intersecting_horizontal_ray(p, _) })
+
+  // we need to count the number of times 2 vertical edges were connected on the same row as
+  // the point, because we need to reduce that from the final count
+  // but we only reduce if the horizontal ray
+  let omitted_intersections =
+    potential_intersections
+    |> list.window_by_2()
+    |> list.filter(fn(edges) {
+      // by definition this is true, so we only need to compare one
+      // edges.0.1.row == edges.1.0.row 
+      { edges.0.1 }.row == p.row
+    })
+    |> echo as "omitted"
+
+  potential_intersections
+  |> list.length()
+  |> int.subtract(list.length(omitted_intersections))
   |> int.is_odd
 }
 
@@ -128,6 +229,15 @@ pub fn is_point_on_edge(p: Point, e: Edge) -> Bool {
   }
 }
 
+pub fn is_offset_point_on_edge(p: OffsetPoint, e: Edge) -> Bool {
+  case edge_orientation(e) {
+    Vertical ->
+      p.col == { e.0 }.col
+      && p.row |> is_between_float({ e.0 }.row, { e.1 }.row)
+    _ -> panic as "wrong edge orientation for checking offset point"
+  }
+}
+
 pub fn edge_orientation(e: Edge) -> EdgeOrientation {
   case { e.0 }.col == { e.1 }.col {
     True -> Vertical
@@ -144,6 +254,13 @@ fn is_between(x: Int, bound1: Int, bound2: Int) -> Bool {
   case bound1 < bound2 {
     True -> x <= bound2 && x >= bound1
     False -> x <= bound1 && x >= bound2
+  }
+}
+
+fn is_between_float(x: Float, bound1: Int, bound2: Int) -> Bool {
+  case bound1 < bound2 {
+    True -> x <=. int.to_float(bound2) && x >=. int.to_float(bound1)
+    False -> x <=. int.to_float(bound1) && x >=. int.to_float(bound2)
   }
 }
 
@@ -174,15 +291,25 @@ pub type Point {
   Point(col: Int, row: Int)
 }
 
+// hack for raycasting at 0.5 above current point
+pub type OffsetPoint {
+  OffsetPoint(col: Int, row: Float)
+}
+
 pub fn rectangle_area(p1: Point, p2: Point) -> Int {
   { int.absolute_value(p1.col - p2.col) + 1 }
   * { int.absolute_value(p1.row - p2.row) + 1 }
 }
 
-pub fn print_grid(p1: Point, p2: Point, inside_polygon: Set(Point)) {
-  list.range(p1.row, p2.row)
+// prints grid with red tiles, but normalized for smallest rectangle that contains all red tiles
+pub fn print_grid(
+  top_left_corner: Point,
+  bottom_right_corner: Point,
+  inside_polygon: Set(Point),
+) {
+  list.range(top_left_corner.row, bottom_right_corner.row)
   |> list.each(fn(row) {
-    list.range(p1.col, p2.col)
+    list.range(top_left_corner.col, bottom_right_corner.col)
     |> list.each(fn(col) {
       let point = Point(col:, row:)
       case set.contains(inside_polygon, point) {
