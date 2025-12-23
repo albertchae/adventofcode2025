@@ -1,4 +1,4 @@
-import day9b.{Horizontal, Point, Vertical}
+import day9b.{Horizontal, Point, Vertical, BSTNode, Empty}
 import gleeunit
 
 pub fn main() -> Nil {
@@ -33,4 +33,26 @@ pub fn is_point_on_edge_test() {
 pub fn edge_orientation_test() {
   assert day9b.edge_orientation(#(Point(7, 1), Point(11, 1))) == Horizontal
   assert day9b.edge_orientation(#(Point(11, 1), Point(11, 7))) == Vertical
+}
+
+pub fn reversed_list_to_binary_search_tree_test() {
+  assert day9b.reversed_list_to_binary_search_tree([]) == Empty
+  assert day9b.reversed_list_to_binary_search_tree([#(5, 6)]) == BSTNode(#(5, 6), Empty, Empty)
+  assert day9b.reversed_list_to_binary_search_tree([#(10, 12), #(5, 6)]) == BSTNode(#(5, 6), Empty, BSTNode(#(10, 12), Empty, Empty))
+
+
+  day9b.reversed_list_to_binary_search_tree([#(10, 12), #(5, 6), #(0, 2)]) |> echo
+
+  day9b.reversed_list_to_binary_search_tree([#(40, 50), #(20, 30), #(10, 12), #(5, 6), #(0, 2)]) |> echo
+}
+
+pub fn col_in_row_test() {
+  let bst = day9b.reversed_list_to_binary_search_tree([#(40, 50), #(20, 30), #(10, 12), #(5, 6), #(0, 2)])
+
+  assert day9b.col_in_row(bst, 44)
+  assert !day9b.col_in_row(bst, 54)
+  assert day9b.col_in_row(bst, 20)
+  assert day9b.col_in_row(bst, 30)
+  assert day9b.col_in_row(bst, 11)
+  assert !day9b.col_in_row(bst, 3)
 }

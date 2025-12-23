@@ -1,11 +1,12 @@
 import argv
 import gleam/bool
-import gleam/dict
+import gleam/dict.{type Dict}
 import gleam/function
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{Some, None}
+import gleam/option.{None, Some}
+import gleam/order.{type Order, Eq, Gt, Lt}
 import gleam/pair
 import gleam/result
 import gleam/set.{type Set}
@@ -36,7 +37,7 @@ pub fn main() {
       { points |> list.map(fn(p) { p.row }) |> list.fold(0, int.max) } + 1,
     )
 
-  //print_grid(top_left_corner, bottom_right_corner, set.from_list(points))
+  print_grid(top_left_corner, bottom_right_corner, set.from_list(points))
 
   let #(horizontal_edges, vertical_edges) =
     edges
@@ -49,8 +50,9 @@ pub fn main() {
       horizontal_edges,
       vertical_edges,
     )
+    |> echo
 
-  print_grid(top_left_corner, bottom_right_corner, points_in_polygon)
+  print_grid_with_bst(top_left_corner, bottom_right_corner, points_in_polygon)
 
   let candidate_rectangle_corners = points |> list.combination_pairs()
 
@@ -58,7 +60,7 @@ pub fn main() {
     candidate_rectangle_corners
     |> list.filter(fn(corners) {
       rectangle_map(corners.0, corners.1, fn(p) {
-        points_in_polygon |> set.contains(p)
+        points_in_polygon |> inside_polygon_dict(p)
       })
       |> list.all(function.identity)
     })
@@ -76,12 +78,16 @@ fn largest_rectangle_area(corners: List(#(Point, Point))) {
   |> list.last()
 }
 
+// dict of row num to binary search tree of number ranges
+// method to convert list of ranges to binary search tree
+// 
+
 pub fn identify_points_in_polygon(
   p1: Point,
   p2: Point,
   horizontal_edges: List(Edge),
   vertical_edges: List(Edge),
-) -> Set(Point) {
+) -> Dict(Int, BSTNode) {
   // horizontal edges by row
   // vertical edges by column
 
@@ -108,7 +114,7 @@ pub fn identify_points_in_polygon(
     })
 
   list.range(p1.row, p2.row)
-  |> list.fold([], fn(all_points, row) {
+  |> list.fold(dict.new(), fn(row_to_bst_nodes, row) {
     // we start with a point guaranteed to be outside the polygon
     // if currently not in polygon and we cross a vertical edge, then we are in polygon
     // we are in polygon until we cross the next vertical edge
@@ -119,40 +125,112 @@ pub fn identify_points_in_polygon(
       _ -> 1
     }
 
-    list.range(p1.col + 1, p2.col)
-    |> list.fold(#(all_points, False), fn(acc, col) {
-      let point = Point(col:, row:)
-      let current_point_on_horizontal_edge =
-        horizontal_edges_by_row |> dict.get(row) |> result.unwrap([]) |> list.any({ is_point_on_edge(point, _) })
+    let row_bst =
+      list.range(p1.col + 1, p2.col)
+      |> list.fold(#([], False), fn(acc, col) {
+        let point = Point(col:, row:)
+        let current_point_on_horizontal_edge =
+          horizontal_edges_by_row
+          |> dict.get(row)
+          |> result.unwrap([])
+          |> list.any({ is_point_on_edge(point, _) })
 
-      let in_polygon = acc.1
-      let intersect_vertical =
-        vertical_edges_by_col
-        |> dict.get(col)
-        |> result.unwrap([])
-        |> list.any({
-          is_offset_point_on_edge(
-            OffsetPoint(col:, row: { int.to_float(row) -. 0.5 }),
-            _,
-          )
-        })
+        let in_polygon = acc.1
+        let intersect_vertical =
+          vertical_edges_by_col
+          |> dict.get(col)
+          |> result.unwrap([])
+          |> list.any({
+            is_offset_point_on_edge(
+              OffsetPoint(col:, row: { int.to_float(row) -. 0.5 }),
+              _,
+            )
+          })
 
-      let add_current_point_to_polygon =
-        in_polygon
-        || current_point_on_horizontal_edge
-        || { !in_polygon && intersect_vertical }
-      let next_points = case add_current_point_to_polygon {
-        True -> [point, ..acc.0]
-        False -> acc.0
-      }
+        let add_current_point_to_polygon =
+          in_polygon
+          || current_point_on_horizontal_edge
+          || { !in_polygon && intersect_vertical }
+        let next_ranges = case add_current_point_to_polygon {
+          True ->
+            case acc.0 {
+              // a range will never be a single value, but start with that as a placeholder
+              [] -> [#(col, col)]
+              [head, ..rest] -> {
+                let current_range: #(Int, Int) = head
+                case current_range.1 + 1 == col {
+                  // extend current range
+                  True -> [#(current_range.0, col), ..rest]
+                  // start new range
+                  False -> [#(col, -9), current_range, ..rest]
+                }
+              }
+            }
+          False -> acc.0
+        }
 
-      let next_in_polygon = bool.exclusive_or(in_polygon, intersect_vertical)
+        let next_in_polygon = bool.exclusive_or(in_polygon, intersect_vertical)
 
-      #(next_points, next_in_polygon)
-    })
-    |> pair.first()
+        #(next_ranges, next_in_polygon)
+      })
+      |> pair.first()
+      |> reversed_list_to_binary_search_tree()
+
+    row_to_bst_nodes |> dict.insert(row, row_bst)
   })
-  |> set.from_list()
+}
+
+pub type BSTNode {
+  BSTNode(value: #(Int, Int), less_than: BSTNode, greater_than: BSTNode)
+  Empty
+}
+
+// data is a list of mutually exclusive ranges in reverse order.
+// The ranges themselves are tuples in #(min, max) shape
+pub fn reversed_list_to_binary_search_tree(data: List(#(Int, Int))) -> BSTNode {
+  case data {
+    [] -> Empty
+    [single] -> BSTNode(single, Empty, Empty)
+    _ -> {
+      let length = list.length(data)
+
+      let #(greater_than, less_than) = list.split(data, length / 2)
+      // Always take the current node value from the right (less_than)
+      // if the length is odd, it'll be the bigger list
+      // if it's even it doesn't matter which one we take
+      let assert [value, ..rest_less_than] = less_than
+      BSTNode(
+        value:,
+        greater_than: reversed_list_to_binary_search_tree(greater_than),
+        less_than: reversed_list_to_binary_search_tree(rest_less_than),
+      )
+    }
+  }
+}
+
+pub fn col_in_row(row: BSTNode, search: Int) -> Bool {
+  case row {
+    Empty -> False
+    BSTNode(value:, less_than:, greater_than:) -> {
+      case in_range(value, search) {
+        Lt -> col_in_row(less_than, search)
+        Eq -> True
+        Gt -> col_in_row(greater_than, search)
+      }
+    }
+  }
+}
+
+fn in_range(range: #(Int, Int), x: Int) -> Order {
+  let #(min, max) = range
+  case x >= min {
+    False -> Lt
+    True ->
+      case x <= max {
+        True -> Eq
+        False -> Gt
+      }
+  }
 }
 
 // given a top left and bottom right corner of a rectangle, map a function over every point
@@ -313,6 +391,38 @@ pub fn print_grid(
     |> list.each(fn(col) {
       let point = Point(col:, row:)
       case set.contains(inside_polygon, point) {
+        True -> io.print("#")
+        False -> io.print(".")
+      }
+    })
+    io.println("")
+  })
+}
+
+pub fn inside_polygon_dict(
+  inside_polygon: Dict(Int, BSTNode),
+  point: Point,
+) -> Bool {
+  let Point(col:, row:) = point
+
+  inside_polygon
+  |> dict.get(row)
+  |> result.unwrap(Empty)
+  |> col_in_row(col)
+}
+
+pub fn print_grid_with_bst(
+  top_left_corner: Point,
+  bottom_right_corner: Point,
+  inside_polygon: Dict(Int, BSTNode),
+) {
+  list.range(top_left_corner.row, bottom_right_corner.row)
+  |> list.each(fn(row) {
+    list.range(top_left_corner.col, bottom_right_corner.col)
+    |> list.each(fn(col) {
+      let point_in_polygon =
+        inside_polygon_dict(inside_polygon, Point(col:, row:))
+      case point_in_polygon {
         True -> io.print("#")
         False -> io.print(".")
       }
