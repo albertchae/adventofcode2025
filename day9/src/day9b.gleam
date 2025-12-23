@@ -37,7 +37,7 @@ pub fn main() {
       { points |> list.map(fn(p) { p.row }) |> list.fold(0, int.max) } + 1,
     )
 
-  print_grid(top_left_corner, bottom_right_corner, set.from_list(points))
+  // print_grid(top_left_corner, bottom_right_corner, set.from_list(points))
 
   let #(horizontal_edges, vertical_edges) =
     edges
@@ -50,21 +50,18 @@ pub fn main() {
       horizontal_edges,
       vertical_edges,
     )
-    |> echo
 
-  print_grid_with_bst(top_left_corner, bottom_right_corner, points_in_polygon)
+  // print_grid_with_bst(top_left_corner, bottom_right_corner, points_in_polygon)
 
   let candidate_rectangle_corners = points |> list.combination_pairs()
 
   let rectangle_corners_in_polygon =
     candidate_rectangle_corners
     |> list.filter(fn(corners) {
-      rectangle_map(corners.0, corners.1, fn(p) {
+      rectangle_edge_all(corners.0, corners.1, fn(p) {
         points_in_polygon |> inside_polygon_dict(p)
       })
-      |> list.all(function.identity)
     })
-    |> echo
 
   rectangle_corners_in_polygon
   |> largest_rectangle_area
@@ -73,9 +70,19 @@ pub fn main() {
 
 fn largest_rectangle_area(corners: List(#(Point, Point))) {
   corners
-  |> list.map(fn(pair) { rectangle_area(pair.0, pair.1) })
-  |> list.sort(int.compare)
-  |> list.last()
+  |> list.index_fold(0, fn(acc, pair, index) {
+    case index % 1000 == 0 {
+      True -> echo index as "evaluating candidate rectangle"
+      _ -> 1
+    }
+
+    let current_area = rectangle_area(pair.0, pair.1)
+
+    case current_area > acc {
+      True -> current_area
+      False -> acc
+    }
+  })
 }
 
 // dict of row num to binary search tree of number ranges
@@ -234,16 +241,37 @@ fn in_range(range: #(Int, Int), x: Int) -> Order {
 }
 
 // given a top left and bottom right corner of a rectangle, map a function over every point
-pub fn rectangle_map(p1: Point, p2: Point, function: fn(Point) -> a) -> List(a) {
+// safe to only look at edges?
+pub fn rectangle_all(p1: Point, p2: Point, function: fn(Point) -> Bool) -> Bool {
   list.range(p1.row, p2.row)
-  |> list.map(fn(row) {
+  |> list.all(fn(row) {
     list.range(p1.col, p2.col)
-    |> list.map(fn(col) {
+    |> list.all(fn(col) {
       let point = Point(col:, row:)
       function(point)
     })
   })
-  |> list.flatten
+}
+
+// a rectangle can't be hollow somehow if 2 of the corner are on the polygon?
+pub fn rectangle_edge_all(p1: Point, p2: Point, function: fn(Point) -> Bool) -> Bool {
+  // top edge
+  let top_and_bottom_all = list.range(p1.col, p2.col)
+  |> list.all(fn(col) {
+    function(Point(col:, row: p1.row)) && 
+    function(Point(col:, row: p2.row))
+  })
+
+  case top_and_bottom_all {
+    False -> False
+    True -> {
+      list.range(p1.row, p2.row)
+      |> list.all(fn(row) {
+        function(Point(row:, col: p1.col)) &&
+        function(Point(row:, col: p2.col))
+      })
+    }
+  }
 }
 
 pub fn is_in_polygon(
