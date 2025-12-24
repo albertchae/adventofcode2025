@@ -1,7 +1,6 @@
 import argv
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/function
 import gleam/int
 import gleam/io
 import gleam/list
@@ -55,34 +54,32 @@ pub fn main() {
 
   let candidate_rectangle_corners = points |> list.combination_pairs()
 
-  let rectangle_corners_in_polygon =
-    candidate_rectangle_corners
-    |> list.filter(fn(corners) {
-      rectangle_edge_all(corners.0, corners.1, fn(p) {
-        points_in_polygon |> inside_polygon_dict(p)
-      })
-    })
-
-  rectangle_corners_in_polygon
-  |> largest_rectangle_area
-  |> echo
-}
-
-fn largest_rectangle_area(corners: List(#(Point, Point))) {
-  corners
-  |> list.index_fold(0, fn(acc, pair, index) {
+  candidate_rectangle_corners
+  |> list.index_fold(0, fn(acc, corners, index) {
     case index % 1000 == 0 {
       True -> echo index as "evaluating candidate rectangle"
       _ -> 1
     }
 
-    let current_area = rectangle_area(pair.0, pair.1)
+    let current_area = rectangle_area(corners.0, corners.1)
 
-    case current_area > acc {
-      True -> current_area
-      False -> acc
+    // Evaluate whether this rectangle is even worth checking inside the polygon
+    // Another speedup would be to sort all the areas first and do some kind of binary search
+    case current_area <= acc {
+      True -> acc
+      False -> {
+        let rectangle_edges_in_polygon =
+          rectangle_edge_all(corners.0, corners.1, fn(p) {
+            points_in_polygon |> inside_polygon_dict(p)
+          })
+        case rectangle_edges_in_polygon {
+          False -> acc
+          True -> current_area
+        }
+      }
     }
   })
+  |> echo as "largest rectangle area in polygon"
 }
 
 // dict of row num to binary search tree of number ranges
@@ -254,21 +251,24 @@ pub fn rectangle_all(p1: Point, p2: Point, function: fn(Point) -> Bool) -> Bool 
 }
 
 // a rectangle can't be hollow somehow if 2 of the corner are on the polygon?
-pub fn rectangle_edge_all(p1: Point, p2: Point, function: fn(Point) -> Bool) -> Bool {
+pub fn rectangle_edge_all(
+  p1: Point,
+  p2: Point,
+  function: fn(Point) -> Bool,
+) -> Bool {
   // top edge
-  let top_and_bottom_all = list.range(p1.col, p2.col)
-  |> list.all(fn(col) {
-    function(Point(col:, row: p1.row)) && 
-    function(Point(col:, row: p2.row))
-  })
+  let top_and_bottom_all =
+    list.range(p1.col, p2.col)
+    |> list.all(fn(col) {
+      function(Point(col:, row: p1.row)) && function(Point(col:, row: p2.row))
+    })
 
   case top_and_bottom_all {
     False -> False
     True -> {
       list.range(p1.row, p2.row)
       |> list.all(fn(row) {
-        function(Point(row:, col: p1.col)) &&
-        function(Point(row:, col: p2.col))
+        function(Point(row:, col: p1.col)) && function(Point(row:, col: p2.col))
       })
     }
   }
