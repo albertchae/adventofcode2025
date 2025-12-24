@@ -16,7 +16,8 @@ pub fn main() {
   |> string.trim()
   |> string.split("\n")
   |> list.map(parse_machine_string)
-  |> list.fold(0, fn(acc, problem) {
+  |> list.index_fold(0, fn(acc, problem, index) {
+    echo index as "machine number"
     let machine_goal = problem.0
     let buttons = problem.1
 
@@ -26,33 +27,34 @@ pub fn main() {
 }
 
 /// s looks like "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
-pub fn parse_machine_string(s: String) -> #(MachineState, List(List(Int))) {
+pub fn parse_machine_string(s: String) -> #(JoltageState, List(List(Int))) {
   let split_machine_string = s |> string.split(" ")
 
-  let assert Ok(machine_spec) = list.first(split_machine_string)
+  let assert Ok(_) = list.first(split_machine_string)
 
   let assert Ok(rest) = list.rest(split_machine_string)
 
-  let buttons = parse_buttons(rest, [])
+  let #(buttons, joltage_goal) = parse_buttons(rest, [])
 
-  #(parse_machine_spec(machine_spec), buttons)
+  #(joltage_goal, buttons)
 }
 
 /// s looks like the list of split string "(3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
 fn parse_buttons(
   buttons_and_joltage: List(String),
   buttons: List(List(Int)),
-) -> List(List(Int)) {
+) -> #(List(List(Int)), JoltageState) {
   case buttons_and_joltage {
     [] -> panic as "malformed input"
-    [_joltage] -> buttons
+    [joltage] -> #(buttons, parse_joltage_spec(joltage))
     [head, ..rest] -> {
-      parse_buttons(rest, [parse_button(head), ..buttons])
+      parse_buttons(rest, [parse_comma_separated_numbers(head), ..buttons])
     }
   }
 }
 
-fn parse_button(button_string: String) -> List(Int) {
+/// repurposed to use for joltage too
+fn parse_comma_separated_numbers(button_string: String) -> List(Int) {
   let numbers_only = button_string |> string.drop_start(1) |> string.drop_end(1)
 
   numbers_only
@@ -62,24 +64,31 @@ fn parse_button(button_string: String) -> List(Int) {
 
 pub fn find_fewest_button_presses(
   buttons: List(List(Int)),
-  goal: MachineState,
+  goal: JoltageState,
 ) -> Int {
+  let JoltageState(jd) = goal
+  let initial_joltage =
+    list.range(0, dict.size(jd) - 1)
+    |> list.map(fn(index) { #(index, 0) })
+    |> dict.from_list()
+    |> JoltageState()
+
   do_find_fewest_button_presses(
     buttons,
     goal,
-    dict.new() |> dict.insert(MachineState(0), 0),
-    [MachineState(0)],
+    dict.new() |> dict.insert(initial_joltage, 0),
+    [initial_joltage],
     1,
   )
 }
 
 /// The first 2 arguments to this are static, the others are the iteration state
-/// dp_log is the number of button presses to get to this MachineState from 0
+/// dp_log is the number of button presses to get to this JoltageState from 0
 fn do_find_fewest_button_presses(
   buttons: List(List(Int)),
-  goal: MachineState,
-  dp_log: Dict(MachineState, Int),
-  current_states: List(MachineState),
+  goal: JoltageState,
+  dp_log: Dict(JoltageState, Int),
+  current_states: List(JoltageState),
   current_depth: Int,
 ) {
   case dp_log |> dict.get(goal) {
@@ -89,7 +98,11 @@ fn do_find_fewest_button_presses(
         process_single_pass_states(current_states, buttons, set.new())
       let new_states =
         next_states
-        |> set.filter(fn(s) { !dict.has_key(dp_log, s) })
+        |> set.filter(fn(s) {
+          // filter out states we've already visited
+          // and others that are disqualified because they will never satisfy the goal
+          !dict.has_key(dp_log, s) && is_possible_intermediate_joltage(s, goal)
+        })
       let updated_dp_log =
         new_states
         |> set.fold(dp_log, fn(acc, s) {
@@ -113,14 +126,30 @@ fn do_find_fewest_button_presses(
   }
 }
 
+pub fn is_possible_intermediate_joltage(
+  candidate_joltage: JoltageState,
+  goal: JoltageState,
+) -> Bool {
+  let JoltageState(cj_dict) = candidate_joltage
+  let JoltageState(g_dict) = goal
+  cj_dict
+  |> dict.keys()
+  |> list.all(fn(index) {
+    let assert Ok(cj) = cj_dict |> dict.get(index)
+    let assert Ok(gj) = g_dict |> dict.get(index)
+
+    cj <= gj
+  })
+}
+
 /// a single BFS pass essentially
 /// tries to toggle every button once on the depth of states and returns next state + count
 /// we will throw away longer states outside of this function
 fn process_single_pass_states(
-  current_pass_states: List(MachineState),
+  current_pass_states: List(JoltageState),
   buttons: List(List(Int)),
-  next_states: Set(MachineState),
-) -> Set(MachineState) {
+  next_states: Set(JoltageState),
+) -> Set(JoltageState) {
   case current_pass_states {
     [] -> next_states
     [head, ..rest] -> {
@@ -139,40 +168,41 @@ fn process_single_pass_states(
 /// generates all possible next state
 fn process_single_state_all_buttons(
   buttons: List(List(Int)),
-  state: MachineState,
-) -> List(MachineState) {
+  state: JoltageState,
+) -> List(JoltageState) {
   buttons
   |> list.fold([], fn(acc, b) { [toggle_button(state, b), ..acc] })
 }
 
-pub type MachineState {
-  MachineState(state: Int)
+pub type JoltageState {
+  JoltageState(state: Dict(Int, Int))
 }
 
-pub fn toggle_button(machine: MachineState, button: List(Int)) -> MachineState {
-  let MachineState(state) = machine
-  state
-  |> int.bitwise_exclusive_or(convert_button_to_int(button))
-  |> MachineState()
-}
+pub fn toggle_button(machine: JoltageState, button: List(Int)) -> JoltageState {
+  let JoltageState(state) = machine
 
-/// convert a button to the Int we can use to XOR with machine state
-pub fn convert_button_to_int(button: List(Int)) -> Int {
   button
-  |> list.fold(0, fn(acc, x) { int.bitwise_shift_left(1, x) + acc })
+  |> list.fold(state, fn(acc, index) {
+    acc
+    |> dict.upsert(index, fn(opt) {
+      case opt {
+        Some(i) -> i + 1
+        None -> panic as "dict was set up improperly or malformed input"
+      }
+    })
+  })
+  |> JoltageState()
 }
 
-pub fn parse_machine_spec(machine_spec: String) -> MachineState {
-  // this could be reduced to a single pass over the string
-  machine_spec
-  |> string.drop_start(1)
-  |> string.drop_end(1)
-  |> string.replace(".", "0")
-  |> string.replace("#", "1")
-  |> string.reverse()
-  |> int.base_parse(2)
-  |> result.unwrap(-1)
-  |> MachineState()
+// Need to use the more generic form of dict, instead of a bitwise map which was just an Int
+pub fn parse_joltage_spec(joltage_spec: String) -> JoltageState {
+  joltage_spec
+  |> parse_comma_separated_numbers()
+  |> list.index_fold(dict.new(), fn(acc, joltage, index) {
+    acc
+    |> dict.insert(index, joltage)
+  })
+  |> JoltageState()
 }
 
 fn parse_argv() -> String {

@@ -5,10 +5,6 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
-pub fn parse_machine_string_test() {
-
-}
-
 pub fn parse_machine_goal_test() {
   assert day10.parse_machine_spec("[.##.]") == MachineState(6)
   assert day10.parse_machine_spec("[...#.]") == MachineState(8)
