@@ -1,3 +1,4 @@
+import argv
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
@@ -6,9 +7,58 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
+import simplifile
 
-pub fn main() -> Nil {
-  io.println("Hello from day10!")
+pub fn main() {
+  let filename = parse_argv()
+  let assert Ok(input) = simplifile.read(filename)
+  let machine_strings =
+    input
+    |> string.trim()
+    |> string.split("\n")
+    |> list.map(parse_machine_string)
+    |> list.fold(0, fn(acc, problem) {
+      let machine_goal = problem.0
+      let buttons = problem.1
+
+      acc + find_fewest_button_presses(buttons, machine_goal)
+    })
+    |> echo
+}
+
+// s looks like "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
+pub fn parse_machine_string(s: String) -> #(MachineState, List(List(Int))) {
+  let split_machine_string = s |> string.split(" ")
+
+  let assert Ok(machine_spec) = list.first(split_machine_string)
+
+  let assert Ok(rest) = list.rest(split_machine_string)
+
+  let buttons = parse_buttons(rest, [])
+
+  #(parse_machine_spec(machine_spec), buttons)
+}
+
+// s looks like the list of split string "(3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
+fn parse_buttons(
+  buttons_and_joltage: List(String),
+  buttons: List(List(Int)),
+) -> List(List(Int)) {
+  case buttons_and_joltage {
+    [] -> panic as "malformed input"
+    [_joltage] -> buttons
+    [head, ..rest] -> {
+      parse_buttons(rest, [parse_button(head), ..buttons])
+    }
+  }
+}
+
+fn parse_button(button_string: String) -> List(Int) {
+  let numbers_only = button_string |> string.drop_start(1) |> string.drop_end(1)
+
+  numbers_only
+  |> string.split(",")
+  |> list.map(fn(x) { int.parse(x) |> result.unwrap(-1) })
 }
 
 // dp_log is the number of button presses to get to this MachineState from 0
@@ -124,4 +174,14 @@ pub fn parse_machine_spec(machine_spec: String) -> MachineState {
   |> int.base_parse(2)
   |> result.unwrap(-1)
   |> MachineState()
+}
+
+fn parse_argv() -> String {
+  case argv.load().arguments {
+    [path] -> path
+    _ -> {
+      io.println("Usage: gleam run <directory_path> <count>")
+      ""
+    }
+  }
 }
