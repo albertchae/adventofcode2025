@@ -20,18 +20,24 @@ pub fn main() {
   |> string.trim()
   |> string.split("\n")
   |> list.map(parse_machine_string)
+  |> list.index_map(fn(problem, index) { #(index + 1, problem) })
   |> parallel_map.list_pmap(
-    fn(problem) {
+    fn(problem_with_index) {
+      let index = problem_with_index.0
+      let problem = problem_with_index.1
       let machine_goal = problem.0
       let buttons = problem.1
 
-      find_fewest_button_presses(buttons, machine_goal)
-      |> echo
+      let answer = find_fewest_button_presses(buttons, machine_goal)
+
+      echo #(index, answer)
+
+      answer
     },
     MatchSchedulersOnline,
-    100_000_000,
+    10_000_000,
   )
-  |> list.map(result.unwrap(_, -1))
+  |> list.map(result.unwrap(_, 0))
   |> list.fold(0, int.add)
   |> echo
 }
@@ -126,135 +132,135 @@ fn do_find_fewest_button_presses(
           //k |> echo as "k"
           //v |> echo as "v"
 
-
           acc
           |> dict.insert(
             k,
             v - { cs_dict |> dict.get(k) |> result.unwrap(-1) },
           )
         })
-        //|> echo as "diff_dict"
+      //|> echo as "diff_dict"
       //echo diff as "other diff"
       let diff =
         diff_dict
         |> dict.get(index)
         |> result.unwrap(-1)
-        //|> echo as "diff"
+      //|> echo as "diff"
 
       let #(buttons_for_index, remaining_buttons) =
         current_buttons
         |> partition_buttons_for_index(index)
 
-
       case buttons_for_index {
         [] -> do_find_fewest_button_presses(goal, dp_log, rest)
         _ -> {
+          let max_per_bin =
+            buttons_for_index
+            |> list.index_fold(dict.new(), fn(acc, button, index) {
+              // for this button, find the most times we can push it without going over the goal
+              // this means the smallest value in diff_dict that matches this button
 
-      let max_per_bin =
-        buttons_for_index
-        |> list.index_fold(dict.new(), fn(acc, button, index) {
-          // for this button, find the most times we can push it without going over the goal
-          // this means the smallest value in diff_dict that matches this button
-
-          let max_presses =
-            button
-            |> list.fold(100_000, fn(acc, counter_index) {
-              let assert Ok(diff_at_index) =
-                diff_dict |> dict.get(counter_index)
-                //echo diff_dict
-              assert diff_at_index != -1
-              case diff_at_index < acc {
-                False -> acc
-                True -> diff_at_index
-              }
-            })
-
-          acc
-          |> dict.insert(index, max_presses)
-        })
-
-      let button_distributions =
-        stars_and_bars_distribution(
-          diff,
-          list.length(buttons_for_index),
-          max_per_bin,
-        )
-
-      // idea 2, start with spaces that are touched by the fewest buttons
-      // idea 1, i don't actually need all these lists, so write my own generator
-      // this is too slow, maybe the generator needs to pre-exclude anything that would
-      // take the joltage out of bounds automatically
-
-
-      let next_states =
-        button_distributions
-        |> list.fold([], fn(acc, button_distribution) {
-          let next_state =
-            list.zip(button_distribution, buttons_for_index)
-            |> list.fold(cs_dict, fn(acc, button_pair) {
-              let #(button_times, button) = button_pair
-              button
-              |> list.fold(acc, fn(inner_acc, index) {
-                inner_acc
-                |> dict.upsert(index, fn(opt) {
-                  case opt {
-                    None -> button_times
-                    Some(x) -> x + button_times
+              let max_presses =
+                button
+                |> list.fold(100_000, fn(acc, counter_index) {
+                  let assert Ok(diff_at_index) =
+                    diff_dict |> dict.get(counter_index)
+                  //echo diff_dict
+                  assert diff_at_index != -1
+                  case diff_at_index < acc {
+                    False -> acc
+                    True -> diff_at_index
                   }
                 })
+
+              acc
+              |> dict.insert(index, max_presses)
+            })
+
+          let button_distributions =
+            stars_and_bars_distribution(
+              diff,
+              list.length(buttons_for_index),
+              max_per_bin,
+            )
+
+          // idea 2, start with spaces that are touched by the fewest buttons
+          // idea 1, i don't actually need all these lists, so write my own generator
+          // this is too slow, maybe the generator needs to pre-exclude anything that would
+          // take the joltage out of bounds automatically
+
+          let next_states =
+            button_distributions
+            |> list.fold([], fn(acc, button_distribution) {
+              let next_state =
+                list.zip(button_distribution, buttons_for_index)
+                |> list.fold(cs_dict, fn(acc, button_pair) {
+                  let #(button_times, button) = button_pair
+                  button
+                  |> list.fold(acc, fn(inner_acc, index) {
+                    inner_acc
+                    |> dict.upsert(index, fn(opt) {
+                      case opt {
+                        None -> button_times
+                        Some(x) -> x + button_times
+                      }
+                    })
+                  })
+                })
+                |> JoltageState()
+
+              [next_state, ..acc]
+            })
+          //|> echo as "next states"
+
+          // recurse, but remove all those buttons?
+          // this won't necessarily find the shortest path first like BFS, so we should continue until we exhaust all next states instead of stopping as soon as we reach the goal
+
+          let new_states =
+            next_states
+            |> list.filter(fn(s) {
+              // disqualify states that will never satisfy the goal
+              is_possible_intermediate_joltage(s, goal)
+            })
+
+          // update dynamic programming log
+          let assert Ok(current_distance) = dp_log |> dict.get(current_state)
+          let updated_distance = current_distance + diff
+          //|> echo as "updated_distance"
+          let updated_dp_log =
+            new_states
+            |> list.fold(dp_log, fn(acc, s) {
+              acc
+              |> dict.upsert(s, fn(opt) {
+                case opt {
+                  Some(i) ->
+                    case updated_distance < i {
+                      True -> updated_distance
+                      False -> i
+                    }
+                  None -> updated_distance
+                }
               })
             })
-            |> JoltageState()
 
-          [next_state, ..acc]
-        })
-        //|> echo as "next states"
-
-      // recurse, but remove all those buttons?
-      // this won't necessarily find the shortest path first like BFS, so we should continue until we exhaust all next states instead of stopping as soon as we reach the goal
-
-      let new_states =
-        next_states
-        |> list.filter(fn(s) {
-          // disqualify states that will never satisfy the goal
-          is_possible_intermediate_joltage(s, goal)
-        })
-
-      // update dynamic programming log
-      let assert Ok(current_distance) = dp_log |> dict.get(current_state)
-      let updated_distance =
-        current_distance + diff
-        //|> echo as "updated_distance"
-      let updated_dp_log =
-        new_states
-        |> list.fold(dp_log, fn(acc, s) {
-          acc
-          |> dict.upsert(s, fn(opt) {
-            case opt {
-              Some(i) ->
-                case updated_distance < i {
-                  True -> updated_distance
-                  False -> i
-                }
-              None -> updated_distance
+          case remaining_buttons {
+            [] -> do_find_fewest_button_presses(goal, updated_dp_log, rest)
+            _ -> {
+              // filter out goal from new_states, then add it to rest and continue
+              let states_to_recurse =
+                new_states
+                |> list.filter(fn(s) { s != goal })
+                |> list.map(fn(s) { #(remaining_buttons, s) })
+                |> list.append(rest)
+              do_find_fewest_button_presses(
+                goal,
+                updated_dp_log,
+                states_to_recurse,
+              )
             }
-          })
-        })
-
-      case remaining_buttons {
-        [] -> do_find_fewest_button_presses(goal, updated_dp_log, rest)
-        _ -> {
-          // filter out goal from new_states, then add it to rest and continue
-          let states_to_recurse =
-            new_states
-            |> list.filter(fn(s) { s != goal })
-            |> list.map(fn(s) { #(remaining_buttons, s) })
-            |> list.append(rest)
-          do_find_fewest_button_presses(goal, updated_dp_log, states_to_recurse)
+          }
         }
       }
     }
-      }}
   }
 }
 
