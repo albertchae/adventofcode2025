@@ -1,6 +1,5 @@
 import day10b.{DifferenceToGoal, JoltageState}
 import gleam/dict
-import gleam/list
 import gleam/set
 import gleeunit
 
@@ -110,10 +109,13 @@ pub fn find_index_with_fewest_buttons_test() {
 }
 
 pub fn stars_and_bars_distribution_test() {
-  assert day10b.stars_and_bars_distribution(3, 2) |> set.from_list()
+  assert day10b.stars_and_bars_distribution(3, 2, dict.from_list([#(0, 3), #(1, 3)])) |> set.from_list()
     == set.from_list([[3, 0], [2, 1], [1, 2], [0, 3]])
 
-  assert day10b.stars_and_bars_distribution(3, 3) |> set.from_list()
+  assert day10b.stars_and_bars_distribution(3, 2, dict.from_list([#(0, 3), #(1, 2)])) |> set.from_list()
+    == set.from_list([[3, 0], [2, 1], [1, 2]])
+
+  assert day10b.stars_and_bars_distribution(3, 3, dict.from_list([#(0, 3), #(1, 3), #(2, 3)])) |> set.from_list()
     == set.from_list([
       [3, 0, 0],
       [2, 1, 0],
@@ -125,5 +127,13 @@ pub fn stars_and_bars_distribution_test() {
       [1, 1, 1],
       [0, 0, 3],
       [0, 3, 0],
+    ])
+
+  assert day10b.stars_and_bars_distribution(3, 3, dict.from_list([#(0, 3), #(1, 1), #(2, 1)])) |> set.from_list()
+    == set.from_list([
+      [3, 0, 0],
+      [2, 1, 0],
+      [2, 0, 1],
+      [1, 1, 1],
     ])
 }

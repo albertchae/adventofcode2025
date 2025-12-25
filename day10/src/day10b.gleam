@@ -8,13 +8,10 @@ import gleam/order
 import gleam/pair
 import gleam/result
 import gleam/string
-import gleam/yielder
-import gleam_community/maths
 import parallel_map.{MatchSchedulersOnline}
 import simplifile
 
 pub fn main() {
-
   // row 12, this is too slow
   // stars_and_bars_distribution(169, 12) |> list.length() |> echo
   let filename = parse_argv()
@@ -100,9 +97,9 @@ fn do_find_fewest_button_presses(
   dp_log: Dict(JoltageState, Int),
   current_states: List(#(List(List(Int)), JoltageState)),
 ) -> Int {
-  echo list.length(current_states) as "current_states length"
+  //echo list.length(current_states) as "current_states length"
   case current_states {
-    [] -> dp_log |> dict.get(goal) |> result.unwrap(-1)
+    [] -> dp_log |> dict.get(goal) |> result.unwrap(-110)
     [head, ..rest] -> {
       let current_buttons = head.0
       let current_state = head.1
@@ -112,33 +109,106 @@ fn do_find_fewest_button_presses(
       // - every possible combination of these buttons to 
       //     maths.list_combination_with_repetition(buttons, d)
       //   - for each sublist here, collapse it into a next state
-      let index = find_index_with_fewest_buttons(current_buttons)
+
+      let DifferenceToGoal(index, diff) =
+        smallest_difference_to_goal(current_state, goal)
       let JoltageState(g_dict) = goal
+      //|> echo as "goal"
       let JoltageState(cs_dict) = current_state
 
+      //echo current_state as "current_state"
+      //echo index as "index"
+      //echo cs_dict as "cs_dict"
+
+      let diff_dict =
+        g_dict
+        |> dict.fold(dict.new(), fn(acc, k, v) {
+          //k |> echo as "k"
+          //v |> echo as "v"
+
+
+          acc
+          |> dict.insert(
+            k,
+            v - { cs_dict |> dict.get(k) |> result.unwrap(-1) },
+          )
+        })
+        //|> echo as "diff_dict"
+      //echo diff as "other diff"
       let diff =
-        { g_dict |> dict.get(index) |> result.unwrap(-1) }
-        - { cs_dict |> dict.get(index) |> result.unwrap(1) }
+        diff_dict
+        |> dict.get(index)
+        |> result.unwrap(-1)
+        //|> echo as "diff"
 
       let #(buttons_for_index, remaining_buttons) =
         current_buttons
         |> partition_buttons_for_index(index)
-      let assert Ok(possible_button_combinations) =
-        buttons_for_index
-        |> maths.list_combination_with_repetitions(diff)
 
-      // idea 1, i don't actually need all these lists, so write my own generator
+
+      case buttons_for_index {
+        [] -> do_find_fewest_button_presses(goal, dp_log, rest)
+        _ -> {
+
+      let max_per_bin =
+        buttons_for_index
+        |> list.index_fold(dict.new(), fn(acc, button, index) {
+          // for this button, find the most times we can push it without going over the goal
+          // this means the smallest value in diff_dict that matches this button
+
+          let max_presses =
+            button
+            |> list.fold(100_000, fn(acc, counter_index) {
+              let assert Ok(diff_at_index) =
+                diff_dict |> dict.get(counter_index)
+                //echo diff_dict
+              assert diff_at_index != -1
+              case diff_at_index < acc {
+                False -> acc
+                True -> diff_at_index
+              }
+            })
+
+          acc
+          |> dict.insert(index, max_presses)
+        })
+
+      let button_distributions =
+        stars_and_bars_distribution(
+          diff,
+          list.length(buttons_for_index),
+          max_per_bin,
+        )
+
       // idea 2, start with spaces that are touched by the fewest buttons
+      // idea 1, i don't actually need all these lists, so write my own generator
+      // this is too slow, maybe the generator needs to pre-exclude anything that would
+      // take the joltage out of bounds automatically
+
 
       let next_states =
-        possible_button_combinations
-        |> yielder.to_list()
-        |> list.map(fn(buttons) {
-          buttons
-          |> list.fold(current_state, fn(acc, button) {
-            acc |> toggle_button(button)
-          })
+        button_distributions
+        |> list.fold([], fn(acc, button_distribution) {
+          let next_state =
+            list.zip(button_distribution, buttons_for_index)
+            |> list.fold(cs_dict, fn(acc, button_pair) {
+              let #(button_times, button) = button_pair
+              button
+              |> list.fold(acc, fn(inner_acc, index) {
+                inner_acc
+                |> dict.upsert(index, fn(opt) {
+                  case opt {
+                    None -> button_times
+                    Some(x) -> x + button_times
+                  }
+                })
+              })
+            })
+            |> JoltageState()
+
+          [next_state, ..acc]
         })
+        //|> echo as "next states"
 
       // recurse, but remove all those buttons?
       // this won't necessarily find the shortest path first like BFS, so we should continue until we exhaust all next states instead of stopping as soon as we reach the goal
@@ -152,7 +222,9 @@ fn do_find_fewest_button_presses(
 
       // update dynamic programming log
       let assert Ok(current_distance) = dp_log |> dict.get(current_state)
-      let updated_distance = current_distance + diff
+      let updated_distance =
+        current_distance + diff
+        //|> echo as "updated_distance"
       let updated_dp_log =
         new_states
         |> list.fold(dp_log, fn(acc, s) {
@@ -182,6 +254,7 @@ fn do_find_fewest_button_presses(
         }
       }
     }
+      }}
   }
 }
 
@@ -321,23 +394,31 @@ fn parse_argv() -> String {
 }
 
 // https://en.wikipedia.org/wiki/Stars_and_bars_(combinatorics)
-pub fn stars_and_bars_distribution(total: Int, bins: Int) -> List(List(Int)) {
-  do_stars_and_bars_distribution(bins, [#([], total, bins)])
+pub fn stars_and_bars_distribution(
+  total: Int,
+  bins: Int,
+  max_per_bin: Dict(Int, Int),
+) -> List(List(Int)) {
+  do_stars_and_bars_distribution(bins, max_per_bin, [#([], total, bins)])
 }
 
 fn do_stars_and_bars_distribution(
   bins: Int,
+  max_per_bin: Dict(Int, Int),
   work_so_far: List(#(List(Int), Int, Int)),
 ) -> List(List(Int)) {
   case work_so_far {
-    [head, .._] ->
+    [head, ..] ->
       case list.length(head.0) == bins {
         True -> work_so_far |> list.map(fn(x) { x.0 })
         False ->
           do_stars_and_bars_distribution(
             bins,
+            max_per_bin,
             work_so_far
-              |> list.map(fn(wip) { distribute_next_bin(wip.0, wip.1, wip.2) })
+              |> list.map(fn(wip) {
+                distribute_next_bin(max_per_bin, wip.0, wip.1, wip.2)
+              })
               |> list.flatten(),
           )
       }
@@ -346,15 +427,19 @@ fn do_stars_and_bars_distribution(
 }
 
 fn distribute_next_bin(
+  max_per_bin: Dict(Int, Int),
   current_distribution: List(Int),
   remaining_total: Int,
   remaining_bins: Int,
 ) -> List(#(List(Int), Int, Int)) {
+  let bin_index = remaining_bins - 1
+  let assert Ok(bin_max) = max_per_bin |> dict.get(bin_index)
+
   case remaining_bins {
     0 -> panic as "should never reach this base case"
     1 -> [#([remaining_total, ..current_distribution], 0, 0)]
-    _ ->
-      list.range(0, remaining_total)
+    _ -> {
+      list.range(0, int.min(bin_max, remaining_total))
       |> list.fold([], fn(acc, next_bin_amount) {
         [
           #(
@@ -365,5 +450,6 @@ fn distribute_next_bin(
           ..acc
         ]
       })
+    }
   }
 }
