@@ -8,6 +8,7 @@ import gleam/result
 import gleam/string
 import gleam/yielder
 import gleam_community/maths
+import parallel_map.{MatchSchedulersOnline}
 import simplifile
 
 pub fn main() {
@@ -17,14 +18,19 @@ pub fn main() {
   |> string.trim()
   |> string.split("\n")
   |> list.map(parse_machine_string)
-  |> list.index_fold(0, fn(acc, problem, index) {
-    echo index + 1 as "machine number"
-    let machine_goal = problem.0
-    let buttons = problem.1
+  |> parallel_map.list_pmap(
+    fn(problem) {
+      let machine_goal = problem.0
+      let buttons = problem.1
 
-    acc + find_fewest_button_presses(buttons, machine_goal)
-    |> echo
-  })
+      find_fewest_button_presses(buttons, machine_goal)
+      |> echo
+    },
+    MatchSchedulersOnline,
+    100000000,
+  )
+  |> list.map(result.unwrap(_, -1))
+  |> list.fold(0, int.add)
   |> echo
 }
 
@@ -103,7 +109,8 @@ fn do_find_fewest_button_presses(
       let DifferenceToGoal(index, diff) =
         smallest_difference_to_goal(current_state, goal)
 
-      let #(buttons_for_index, remaining_buttons) = current_buttons
+      let #(buttons_for_index, remaining_buttons) =
+        current_buttons
         |> partition_buttons_for_index(index)
       let assert Ok(possible_button_combinations) =
         buttons_for_index
@@ -149,20 +156,12 @@ fn do_find_fewest_button_presses(
         })
 
       // filter out goal from new_states, then add it to rest and continue
-      let states_to_recurse = new_states |> list.filter(fn(s) {
-        s != goal
-      })
-      |> list.map(fn(s) {
-#(remaining_buttons, s)
-
-      })
-      |> list.append(rest) 
-
-      do_find_fewest_button_presses(
-        goal,
-        updated_dp_log,
-        states_to_recurse
-      )
+      let states_to_recurse =
+        new_states
+        |> list.filter(fn(s) { s != goal })
+        |> list.map(fn(s) { #(remaining_buttons, s) })
+        |> list.append(rest)
+      do_find_fewest_button_presses(goal, updated_dp_log, states_to_recurse)
     }
   }
 }
