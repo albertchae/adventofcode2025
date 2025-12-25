@@ -1,4 +1,4 @@
-import day10b.{JoltageState}
+import day10b.{JoltageState, DifferenceToGoal}
 import gleam/dict
 import gleeunit
 
@@ -58,4 +58,17 @@ pub fn find_fewest_button_presses_test() {
       day10b.parse_joltage_spec("{10,11,11,5,10,5}"),
     )
     == 11
+}
+
+pub fn smallest_difference_to_goal_test() {
+
+  assert day10b.smallest_difference_to_goal(
+      JoltageState(dict.from_list([#(0, 0), #(1, 0), #(2, 0), #(3, 0)])),
+      day10b.parse_joltage_spec("{3,5,4,7}"),
+    ) == DifferenceToGoal(0, 3)
+
+  assert day10b.smallest_difference_to_goal(
+      JoltageState(dict.from_list([#(0, 0), #(1, 0), #(2, 0), #(3, 0), #(4, 0)])),
+      day10b.parse_joltage_spec("{7,5,12,7,2}"),
+    ) == DifferenceToGoal(4, 2)
 }

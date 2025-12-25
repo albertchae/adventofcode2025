@@ -7,6 +7,8 @@ import gleam/option.{None, Some}
 import gleam/result
 import gleam/set.{type Set}
 import gleam/string
+import gleam/yielder
+import gleam_community/maths
 import simplifile
 
 pub fn main() {
@@ -22,6 +24,7 @@ pub fn main() {
     let buttons = problem.1
 
     acc + find_fewest_button_presses(buttons, machine_goal)
+    |> echo
   })
   |> echo
 }
@@ -74,56 +77,135 @@ pub fn find_fewest_button_presses(
     |> JoltageState()
 
   do_find_fewest_button_presses(
-    buttons,
     goal,
     dict.new() |> dict.insert(initial_joltage, 0),
-    [initial_joltage],
-    1,
+    set.from_list([#(buttons, initial_joltage)]),
   )
 }
 
 /// The first 2 arguments to this are static, the others are the iteration state
 /// dp_log is the number of button presses to get to this JoltageState from 0
 fn do_find_fewest_button_presses(
-  buttons: List(List(Int)),
   goal: JoltageState,
   dp_log: Dict(JoltageState, Int),
-  current_states: List(JoltageState),
-  current_depth: Int,
-) {
-  case dp_log |> dict.get(goal) {
-    Ok(steps) -> steps
-    Error(Nil) -> {
+  current_states: Set(#(List(List(Int)), JoltageState)),
+) -> Int {
+  case current_states |> set.to_list() {
+    [] -> dp_log |> dict.get(goal) |> result.unwrap(-1)
+    [head, ..rest] -> {
+      let current_buttons = head.0
+      let current_state = head.1
+      // for each current state
+      // - get index of smallest difference d to goal joltage
+      // - get every button that touches that index
+      // - every possible combination of these buttons to 
+      //     maths.list_combination_with_repetition(buttons, d)
+      //   - for each sublist here, collapse it into a next state
+      let DifferenceToGoal(index, diff) =
+        smallest_difference_to_goal(current_state, goal)
+
+      let #(buttons_for_index, remaining_buttons) = current_buttons
+        |> partition_buttons_for_index(index)
+      let assert Ok(possible_button_combinations) =
+        buttons_for_index
+        |> maths.list_combination_with_repetitions(diff)
+
       let next_states =
-        process_single_pass_states(current_states, buttons, set.new())
+        possible_button_combinations
+        |> yielder.to_list()
+        |> list.map(fn(buttons) {
+          buttons
+          |> list.fold(current_state, fn(acc, button) {
+            acc |> toggle_button(button)
+          })
+        })
+
+      // recurse, but remove all those buttons?
+      // this won't necessarily find the shortest path first like BFS, so we should continue until we exhaust all next states instead of stopping as soon as we reach the goal
+
       let new_states =
         next_states
-        |> set.filter(fn(s) {
-          // filter out states we've already visited
-          // and others that are disqualified because they will never satisfy the goal
-          !dict.has_key(dp_log, s) && is_possible_intermediate_joltage(s, goal)
+        |> list.filter(fn(s) {
+          // disqualify states that will never satisfy the goal
+          is_possible_intermediate_joltage(s, goal)
         })
+
+      // update dynamic programming log
+      let assert Ok(current_distance) = dp_log |> dict.get(current_state)
+      let updated_distance = current_distance + diff
       let updated_dp_log =
         new_states
-        |> set.fold(dp_log, fn(acc, s) {
+        |> list.fold(dp_log, fn(acc, s) {
           acc
           |> dict.upsert(s, fn(opt) {
             case opt {
-              // by definition this will be smaller than current_depth
-              Some(i) -> i
-              None -> current_depth
+              Some(i) ->
+                case updated_distance < i {
+                  True -> updated_distance
+                  False -> i
+                }
+              None -> updated_distance
             }
           })
         })
+
+      // filter out goal from new_states, then add it to rest and continue
+      let states_to_recurse = new_states |> list.filter(fn(s) {
+        s != goal
+      })
+      |> list.map(fn(s) {
+#(remaining_buttons, s)
+
+      })
+      |> set.from_list()
+      |> set.union(rest |> set.from_list())
+
       do_find_fewest_button_presses(
-        buttons,
         goal,
         updated_dp_log,
-        new_states |> set.to_list(),
-        current_depth + 1,
+        states_to_recurse
       )
     }
   }
+}
+
+pub type DifferenceToGoal {
+  DifferenceToGoal(index: Int, d: Int)
+}
+
+// smallest non zero difference to goal
+pub fn smallest_difference_to_goal(
+  current_state: JoltageState,
+  goal: JoltageState,
+) -> DifferenceToGoal {
+  let JoltageState(cs_dict) = current_state
+  let JoltageState(g_dict) = goal
+
+  cs_dict
+  |> dict.keys()
+  |> list.fold(DifferenceToGoal(-1, 100_000), fn(acc, k) {
+    let smallest_diff_so_far = acc.d
+
+    let diff =
+      { g_dict |> dict.get(k) |> result.unwrap(-1) }
+      - { cs_dict |> dict.get(k) |> result.unwrap(-1) }
+
+    case diff != 0 && diff < smallest_diff_so_far {
+      True -> DifferenceToGoal(k, diff)
+      False -> acc
+    }
+  })
+}
+
+fn partition_buttons_for_index(
+  buttons: List(List(Int)),
+  index: Int,
+) -> #(List(List(Int)), List(List(Int))) {
+  buttons
+  |> list.partition(fn(button) {
+    button
+    |> list.contains(index)
+  })
 }
 
 pub fn is_possible_intermediate_joltage(
@@ -140,38 +222,6 @@ pub fn is_possible_intermediate_joltage(
 
     cj <= gj
   })
-}
-
-/// a single BFS pass essentially
-/// tries to toggle every button once on the depth of states and returns next state + count
-/// we will throw away longer states outside of this function
-fn process_single_pass_states(
-  current_pass_states: List(JoltageState),
-  buttons: List(List(Int)),
-  next_states: Set(JoltageState),
-) -> Set(JoltageState) {
-  case current_pass_states {
-    [] -> next_states
-    [head, ..rest] -> {
-      let more_states = process_single_state_all_buttons(buttons, head)
-
-      let updated_states =
-        more_states
-        |> set.from_list()
-        |> set.union(next_states)
-
-      process_single_pass_states(rest, buttons, updated_states)
-    }
-  }
-}
-
-/// generates all possible next state
-fn process_single_state_all_buttons(
-  buttons: List(List(Int)),
-  state: JoltageState,
-) -> List(JoltageState) {
-  buttons
-  |> list.fold([], fn(acc, b) { [toggle_button(state, b), ..acc] })
 }
 
 pub type JoltageState {
