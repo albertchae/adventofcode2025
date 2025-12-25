@@ -4,6 +4,8 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
+import gleam/order
+import gleam/pair
 import gleam/result
 import gleam/string
 import gleam/yielder
@@ -27,7 +29,7 @@ pub fn main() {
       |> echo
     },
     MatchSchedulersOnline,
-    100000000,
+    100_000_000,
   )
   |> list.map(result.unwrap(_, -1))
   |> list.fold(0, int.add)
@@ -95,6 +97,7 @@ fn do_find_fewest_button_presses(
   dp_log: Dict(JoltageState, Int),
   current_states: List(#(List(List(Int)), JoltageState)),
 ) -> Int {
+  echo list.length(current_states) as "current_states length"
   case current_states {
     [] -> dp_log |> dict.get(goal) |> result.unwrap(-1)
     [head, ..rest] -> {
@@ -106,8 +109,13 @@ fn do_find_fewest_button_presses(
       // - every possible combination of these buttons to 
       //     maths.list_combination_with_repetition(buttons, d)
       //   - for each sublist here, collapse it into a next state
-      let DifferenceToGoal(index, diff) =
-        smallest_difference_to_goal(current_state, goal)
+      let index = find_index_with_fewest_buttons(current_buttons)
+      let JoltageState(g_dict) = goal
+      let JoltageState(cs_dict) = current_state
+
+      let diff =
+        { g_dict |> dict.get(index) |> result.unwrap(-1) }
+        - { cs_dict |> dict.get(index) |> result.unwrap(1) }
 
       let #(buttons_for_index, remaining_buttons) =
         current_buttons
@@ -115,6 +123,9 @@ fn do_find_fewest_button_presses(
       let assert Ok(possible_button_combinations) =
         buttons_for_index
         |> maths.list_combination_with_repetitions(diff)
+
+      // idea 1, i don't actually need all these lists, so write my own generator
+      // idea 2, start with spaces that are touched by the fewest buttons
 
       let next_states =
         possible_button_combinations
@@ -155,19 +166,63 @@ fn do_find_fewest_button_presses(
           })
         })
 
-      // filter out goal from new_states, then add it to rest and continue
-      let states_to_recurse =
-        new_states
-        |> list.filter(fn(s) { s != goal })
-        |> list.map(fn(s) { #(remaining_buttons, s) })
-        |> list.append(rest)
-      do_find_fewest_button_presses(goal, updated_dp_log, states_to_recurse)
+      case remaining_buttons {
+        [] -> do_find_fewest_button_presses(goal, updated_dp_log, rest)
+        _ -> {
+          // filter out goal from new_states, then add it to rest and continue
+          let states_to_recurse =
+            new_states
+            |> list.filter(fn(s) { s != goal })
+            |> list.map(fn(s) { #(remaining_buttons, s) })
+            |> list.append(rest)
+          do_find_fewest_button_presses(goal, updated_dp_log, states_to_recurse)
+        }
+      }
     }
   }
 }
 
 pub type DifferenceToGoal {
   DifferenceToGoal(index: Int, d: Int)
+}
+
+// find index with fewest buttons that can affect it
+// if there's a tiebreaker, find the index with a set of buttons that touches the fewest other indices
+pub fn find_index_with_fewest_buttons(buttons: List(List(Int))) -> Int {
+  buttons
+  |> list.fold(dict.new(), fn(acc, button) {
+    button
+    |> list.fold(acc, fn(inner_acc, index) {
+      inner_acc
+      |> dict.upsert(index, fn(opt) {
+        case opt {
+          None -> [button]
+          Some(buttons) -> [button, ..buttons]
+        }
+      })
+    })
+  })
+  |> dict.fold(#(-1, []), fn(acc, k, v) {
+    case acc.0 == -1 {
+      True -> #(k, v)
+      False ->
+        case int.compare(list.length(v), list.length(acc.1)) {
+          order.Gt -> acc
+          order.Lt -> #(k, v)
+          order.Eq ->
+            case sum_sublist_lengths(v) < sum_sublist_lengths(acc.1) {
+              True -> acc
+              False -> #(k, v)
+            }
+        }
+    }
+  })
+  |> pair.first()
+}
+
+fn sum_sublist_lengths(list_of_lists: List(List(any))) -> Int {
+  list_of_lists
+  |> list.fold(0, fn(acc, sublist) { acc + list.length(sublist) })
 }
 
 // smallest non zero difference to goal
