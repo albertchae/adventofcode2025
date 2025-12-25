@@ -14,6 +14,9 @@ import parallel_map.{MatchSchedulersOnline}
 import simplifile
 
 pub fn main() {
+
+  // row 12, this is too slow
+  // stars_and_bars_distribution(169, 12) |> list.length() |> echo
   let filename = parse_argv()
   let assert Ok(input) = simplifile.read(filename)
   input
@@ -314,5 +317,53 @@ fn parse_argv() -> String {
       io.println("Usage: gleam run <directory_path> <count>")
       ""
     }
+  }
+}
+
+// https://en.wikipedia.org/wiki/Stars_and_bars_(combinatorics)
+pub fn stars_and_bars_distribution(total: Int, bins: Int) -> List(List(Int)) {
+  do_stars_and_bars_distribution(bins, [#([], total, bins)])
+}
+
+fn do_stars_and_bars_distribution(
+  bins: Int,
+  work_so_far: List(#(List(Int), Int, Int)),
+) -> List(List(Int)) {
+  case work_so_far {
+    [head, .._] ->
+      case list.length(head.0) == bins {
+        True -> work_so_far |> list.map(fn(x) { x.0 })
+        False ->
+          do_stars_and_bars_distribution(
+            bins,
+            work_so_far
+              |> list.map(fn(wip) { distribute_next_bin(wip.0, wip.1, wip.2) })
+              |> list.flatten(),
+          )
+      }
+    _ -> panic as "this should never happen"
+  }
+}
+
+fn distribute_next_bin(
+  current_distribution: List(Int),
+  remaining_total: Int,
+  remaining_bins: Int,
+) -> List(#(List(Int), Int, Int)) {
+  case remaining_bins {
+    0 -> panic as "should never reach this base case"
+    1 -> [#([remaining_total, ..current_distribution], 0, 0)]
+    _ ->
+      list.range(0, remaining_total)
+      |> list.fold([], fn(acc, next_bin_amount) {
+        [
+          #(
+            [next_bin_amount, ..current_distribution],
+            remaining_total - next_bin_amount,
+            remaining_bins - 1,
+          ),
+          ..acc
+        ]
+      })
   }
 }

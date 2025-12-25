@@ -1,5 +1,7 @@
-import day10b.{JoltageState, DifferenceToGoal}
+import day10b.{DifferenceToGoal, JoltageState}
 import gleam/dict
+import gleam/list
+import gleam/set
 import gleeunit
 
 pub fn main() -> Nil {
@@ -61,35 +63,67 @@ pub fn find_fewest_button_presses_test() {
 }
 
 pub fn smallest_difference_to_goal_test() {
-
   assert day10b.smallest_difference_to_goal(
       JoltageState(dict.from_list([#(0, 0), #(1, 0), #(2, 0), #(3, 0)])),
       day10b.parse_joltage_spec("{3,5,4,7}"),
-    ) == DifferenceToGoal(0, 3)
+    )
+    == DifferenceToGoal(0, 3)
 
   assert day10b.smallest_difference_to_goal(
-      JoltageState(dict.from_list([#(0, 0), #(1, 0), #(2, 0), #(3, 0), #(4, 0)])),
+      JoltageState(
+        dict.from_list([#(0, 0), #(1, 0), #(2, 0), #(3, 0), #(4, 0)]),
+      ),
       day10b.parse_joltage_spec("{7,5,12,7,2}"),
-    ) == DifferenceToGoal(4, 2)
+    )
+    == DifferenceToGoal(4, 2)
 }
 
 pub fn find_index_with_fewest_buttons_test() {
   // [.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}
-  assert day10b.find_index_with_fewest_buttons(
-      [[3], [1, 3], [2], [2, 3], [0, 2], [0, 1]]
-    )
-    == 1 
-
+  assert day10b.find_index_with_fewest_buttons([
+      [3],
+      [1, 3],
+      [2],
+      [2, 3],
+      [0, 2],
+      [0, 1],
+    ])
+    == 1
   // [...#.] (0,2,3,4) (2,3) (0,4) (0,1,2) (1,2,3,4) {7,5,12,7,2}
-  assert day10b.find_index_with_fewest_buttons(
-      [[0, 2, 3, 4], [2, 3], [0, 4], [0, 1, 2], [1, 2, 3, 4]],
-    )
+  assert day10b.find_index_with_fewest_buttons([
+      [0, 2, 3, 4],
+      [2, 3],
+      [0, 4],
+      [0, 1, 2],
+      [1, 2, 3, 4],
+    ])
     == 1
 
   // [.###.#] (0,1,2,3,4) (0,3,4) (0,1,2,4,5) (1,2) {10,11,11,5,10,5}
-  assert day10b.find_index_with_fewest_buttons(
-      [[0, 1, 2, 3, 4], [0, 3, 4], [0, 1, 2, 4, 5], [1, 2]],
-    )
-    == 5 
+  assert day10b.find_index_with_fewest_buttons([
+      [0, 1, 2, 3, 4],
+      [0, 3, 4],
+      [0, 1, 2, 4, 5],
+      [1, 2],
+    ])
+    == 5
+}
 
+pub fn stars_and_bars_distribution_test() {
+  assert day10b.stars_and_bars_distribution(3, 2) |> set.from_list()
+    == set.from_list([[3, 0], [2, 1], [1, 2], [0, 3]])
+
+  assert day10b.stars_and_bars_distribution(3, 3) |> set.from_list()
+    == set.from_list([
+      [3, 0, 0],
+      [2, 1, 0],
+      [2, 0, 1],
+      [0, 2, 1],
+      [1, 2, 0],
+      [1, 0, 2],
+      [0, 1, 2],
+      [1, 1, 1],
+      [0, 0, 3],
+      [0, 3, 0],
+    ])
 }
