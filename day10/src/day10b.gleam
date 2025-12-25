@@ -5,7 +5,6 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
-import gleam/set.{type Set}
 import gleam/string
 import gleam/yielder
 import gleam_community/maths
@@ -19,7 +18,7 @@ pub fn main() {
   |> string.split("\n")
   |> list.map(parse_machine_string)
   |> list.index_fold(0, fn(acc, problem, index) {
-    echo index as "machine number"
+    echo index + 1 as "machine number"
     let machine_goal = problem.0
     let buttons = problem.1
 
@@ -79,7 +78,7 @@ pub fn find_fewest_button_presses(
   do_find_fewest_button_presses(
     goal,
     dict.new() |> dict.insert(initial_joltage, 0),
-    set.from_list([#(buttons, initial_joltage)]),
+    [#(buttons, initial_joltage)],
   )
 }
 
@@ -88,9 +87,9 @@ pub fn find_fewest_button_presses(
 fn do_find_fewest_button_presses(
   goal: JoltageState,
   dp_log: Dict(JoltageState, Int),
-  current_states: Set(#(List(List(Int)), JoltageState)),
+  current_states: List(#(List(List(Int)), JoltageState)),
 ) -> Int {
-  case current_states |> set.to_list() {
+  case current_states {
     [] -> dp_log |> dict.get(goal) |> result.unwrap(-1)
     [head, ..rest] -> {
       let current_buttons = head.0
@@ -157,8 +156,7 @@ fn do_find_fewest_button_presses(
 #(remaining_buttons, s)
 
       })
-      |> set.from_list()
-      |> set.union(rest |> set.from_list())
+      |> list.append(rest) 
 
       do_find_fewest_button_presses(
         goal,
