@@ -34,7 +34,6 @@ pub fn main() {
         int.compare(a.0, b.0)
       })
       |> list.map(pair.second)
-      |> echo
 
       let vector_length = list.length(goal_vector)
 
@@ -52,7 +51,6 @@ pub fn main() {
           }
         })
       })
-      |> echo
 
       let answer = solve(basis_vectors, goal_vector)
 

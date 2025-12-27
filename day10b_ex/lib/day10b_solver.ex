@@ -22,7 +22,7 @@ defmodule VectorCombinationSolver do
     # Define variables - all non-negative integers
     {coefficients, problem} = 1..num_vectors
     |> Enum.map_reduce(problem, fn index, acc -> 
-      {problem, coefficient} = Problem.new_variable(acc, "coefficient#{index}", min: 0.0,  type: :kInteger)
+      {problem, coefficient} = Problem.new_variable(acc, "coefficient#{index}", min: 0.0,  type: :integer)
       {coefficient, problem}
     end)
 
@@ -72,7 +72,7 @@ defmodule VectorCombinationSolver do
     # Solve the problem
     {:ok, solution} = Dantzig.solve(problem)
 
-    solution |> IO.inspect()
+    # solution |> IO.inspect()
 
     solution.objective
   end
