@@ -1,3 +1,8 @@
+gleam run data/input svr out
+
+mini2 should return 6
+mini3 should return 12
+
 # day11
 
 [![Package Version](https://img.shields.io/hexpm/v/day11)](https://hex.pm/packages/day11)

@@ -1,0 +1,6 @@
+fft: aaa    
+aaa: bbb ccc
+bbb: dac    
+ccc: ddd eee
+ddd: dac    
+eee: dac    

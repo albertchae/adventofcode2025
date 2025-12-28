@@ -1,5 +1,5 @@
-import gleam/dict
 import day11
+import gleam/dict
 import gleeunit
 
 pub fn main() -> Nil {
@@ -25,6 +25,8 @@ pub fn count_paths_test() {
         #("iii", ["out"]),
         #("you", ["bbb", "ccc"]),
       ]),
+      "you",
+      "out",
     )
     == 5
 }
