@@ -1,13 +1,30 @@
+import gleam/dict
+import day11
 import gleeunit
 
 pub fn main() -> Nil {
   gleeunit.main()
 }
 
-// gleeunit test functions end in `_test`
-pub fn hello_world_test() {
-  let name = "Joe"
-  let greeting = "Hello, " <> name <> "!"
+pub fn parse_input_line_test() {
+  assert day11.parse_input_line("aaa: you hhh") == #("aaa", ["you", "hhh"])
+  assert day11.parse_input_line("ggg: out") == #("ggg", ["out"])
+}
 
-  assert greeting == "Hello, Joe!"
+pub fn count_paths_test() {
+  assert day11.count_paths(
+      dict.from_list([
+        #("aaa", ["you", "hhh"]),
+        #("bbb", ["ddd", "eee"]),
+        #("ccc", ["ddd", "eee", "fff"]),
+        #("ddd", ["ggg"]),
+        #("eee", ["out"]),
+        #("fff", ["out"]),
+        #("ggg", ["out"]),
+        #("hhh", ["ccc", "fff", "iii"]),
+        #("iii", ["out"]),
+        #("you", ["bbb", "ccc"]),
+      ]),
+    )
+    == 5
 }
