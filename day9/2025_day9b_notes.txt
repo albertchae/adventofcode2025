@@ -1,0 +1,33 @@
+https://www.reddit.com/r/adventofcode/comments/1ps6hln/2025_day_09_part_2_python_visualisation_for_star/
+
+https://www.reddit.com/r/adventofcode/comments/1ptp0pw/2025_day_9_part_2_help/
+
+
+
+https://www.reddit.com/r/adventofcode/comments/1pigp07/2025_day_9_part_2_visualisation/
+
+
+https://www.reddit.com/r/adventofcode/comments/1pmlw94/comment/nu12du7/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+https://www.reddit.com/r/adventofcode/comments/1pibab2/comment/nt4t2bg/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+
+
+https://www.reddit.com/r/adventofcode/comments/1ppwijf/2025_day_9_part_2_python_some_basic_code_narrowed/
+
+
+https://www.reddit.com/r/adventofcode/comments/1pi3hff/2025_day_9_part_2_a_simple_method_spoiler/
+
+https://kishimotostudios.com/articles/aabb_collision/
+
+
+https://www.reddit.com/r/adventofcode/comments/1pk09un/2025_day_9_part_2_visualization/
+
+https://www.reddit.com/r/adventofcode/comments/1pkvkvs/2025_day_9_part_2_need_a_hint_for_part_2/
+
+
+- compress size (sort of did this, but not by all possible unique values)
+- only rectangle edges need to be checked, is this true
+
+https://www.reddit.com/r/adventofcode/comments/zgu52w/2022_day_9_i_found_this_day_9_visualization_online/
+
+
+https://www.reddit.com/r/adventofcode/comments/1pichj2/comment/nt51naz/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
