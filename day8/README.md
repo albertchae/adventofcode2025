@@ -1,6 +1,8 @@
 gleam run data/sample 10
 gleam run data/input 1000
 
+gleam run --module day8b data/input
+
 # day8
 
 
