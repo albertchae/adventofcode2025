@@ -1,2 +1,12 @@
 .DS_Store
 **/.DS_Store
+
+# gleam
+**/build/
+**/*.beam
+**/*.ez
+**/erl_crash.dump
+
+# elixir
+**/deps
+**/_build/
